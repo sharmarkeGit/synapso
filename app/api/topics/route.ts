@@ -55,10 +55,14 @@ export async function GET() {
   }
 
   const topics = await prisma.topic.findMany({
-    where: { userId: user.id },
-    include: { modules: true },
-    orderBy: { createdAt: 'desc' },
-  })
+  where: { userId: user.id },
+  include: {
+    modules: {
+      orderBy: { orderIndex: 'asc' },
+    },
+  },
+  orderBy: { createdAt: 'desc' },
+})
 
   return NextResponse.json(topics)
 }
