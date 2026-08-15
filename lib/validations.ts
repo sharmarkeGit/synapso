@@ -37,3 +37,8 @@ export const feynmanEvaluationSchema = z.object({
   clarification: z.string(),
   masteryScore: z.number().min(0).max(100),
 })
+
+export const submitReviewSchema = z.object({
+  cardId: z.uuid(),
+  quality: z.number().int().min(0).max(5),
+})
