@@ -13,15 +13,16 @@ datasource db {
 }
 
 model User {
-  id           String        @id @default(uuid())
-  email        String        @unique
-  name         String?
-  clerkId      String        @unique
-  plan         String        @default("free")
-  createdAt    DateTime      @default(now())
-  topics       Topic[]
-  reviews      Review[]
-  subscription Subscription?
+  id            String         @id @default(uuid())
+  email         String         @unique
+  name          String?
+  clerkId       String         @unique
+  plan          String         @default("free")
+  createdAt     DateTime       @default(now())
+  topics        Topic[]
+  reviews       Review[]
+  feynmanChecks FeynmanCheck[]
+  subscription  Subscription?
 }
 
 model Subscription {
@@ -46,13 +47,14 @@ model Topic {
 }
 
 model Module {
-  id         String @id @default(uuid())
-  topicId    String
-  title      String
-  orderIndex Int
-  content    String @db.Text
-  topic      Topic  @relation(fields: [topicId], references: [id])
-  cards      Card[]
+  id            String         @id @default(uuid())
+  topicId       String
+  title         String
+  orderIndex    Int
+  content       String         @db.Text
+  topic         Topic          @relation(fields: [topicId], references: [id])
+  cards         Card[]
+  feynmanChecks FeynmanCheck[]
 }
 
 model Card {
@@ -76,4 +78,18 @@ model Review {
   reviewedAt   DateTime @default(now())
   card         Card     @relation(fields: [cardId], references: [id])
   user         User     @relation(fields: [userId], references: [id])
+}
+
+model FeynmanCheck {
+  id              String   @id @default(uuid())
+  moduleId        String
+  userId          String
+  userExplanation String   @db.Text
+  understoodWell  String[]
+  gaps            String[]
+  clarification   String   @db.Text
+  masteryScore    Int
+  createdAt       DateTime @default(now())
+  module          Module   @relation(fields: [moduleId], references: [id])
+  user            User     @relation(fields: [userId], references: [id])
 }

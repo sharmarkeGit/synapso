@@ -25,3 +25,15 @@ export const curriculumSchema = z.object({
 export const generateCurriculumSchema = z.object({
   topicTitle: z.string().min(3).max(100),
 })
+
+export const feynmanCheckSchema = z.object({
+  moduleId: z.uuid(),
+  userExplanation: z.string().min(20, 'Please write at least a few sentences.'),
+})
+
+export const feynmanEvaluationSchema = z.object({
+  understoodWell: z.array(z.string()),
+  gaps: z.array(z.string()),
+  clarification: z.string(),
+  masteryScore: z.number().min(0).max(100),
+})
