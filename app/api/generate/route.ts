@@ -4,6 +4,7 @@ import { openai } from '@ai-sdk/openai'
 import { auth } from '@clerk/nextjs/server'
 import { prisma } from '@/lib/prisma'
 import { curriculumSchema, generateCurriculumSchema } from '@/lib/validations'
+import { redis } from '@/lib/redis'
 
 export async function POST(req: NextRequest) {
   const { isAuthenticated, userId: clerkId } = await auth()
@@ -44,6 +45,39 @@ if (user.plan === 'free') {
     }
   }
 
+  // Normalize the cache key so "Photosynthesis" and "photosynthesis " hit the same entry
+const cacheKey = `curriculum:${parsed.data.topicTitle.trim().toLowerCase()}`
+
+const cached = await redis.get<{ modules: { title: string; content: string; cards: { question: string; answer: string }[] }[] }>(cacheKey)
+
+if (cached) {
+  // Cache hit: skip the LLM call entirely, but still persist this user's own Topic
+  const curriculum = cached  // déjà un objet, pas besoin de JSON.parse
+
+  await prisma.topic.create({
+    data: {
+      userId: user.id,
+      title: parsed.data.topicTitle,
+      status: 'active',
+      modules: {
+        create: curriculum.modules.map((module, index) => ({
+          title: module.title,
+          content: module.content,
+          orderIndex: index,
+          cards: {
+            create: module.cards.map((card) => ({
+              question: card.question,
+              answer: card.answer,
+            })),
+          },
+        })),
+      },
+    },
+  })
+
+  return NextResponse.json(curriculum)
+}
+
   const result = streamText({
     model: openai('gpt-5-mini'),
     output: Output.object({
@@ -65,6 +99,9 @@ Avoid trivial yes/no questions. Favor "why" and "how" questions that force genui
   // without blocking the streamed response below.
   void Promise.resolve(result.output)
     .then(async (curriculum) => {
+      // Cache the raw curriculum for 7 days so future requests for the same topic skip the LLM entirely
+    await redis.set(cacheKey, curriculum, { ex: 60 * 60 * 24 * 7 })
+
       await prisma.topic.create({
         data: {
           userId: user.id,
