@@ -51,46 +51,55 @@ export default function DashboardPage() {
   const [evaluations, setEvaluations] = useState<Record<number, FeynmanEvaluation>>({})
   const [checkingIndex, setCheckingIndex] = useState<number | null>(null)
 
-  async function handleGenerate(e: React.SubmitEvent<HTMLFormElement>) {
-    e.preventDefault()
-    setIsGenerating(true)
-    setError(null)
-    setCurriculum(null)
-
-    try {
-      const res = await fetch('/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topicTitle }),
-      })
-
-      if (!res.ok || !res.body) {
-        throw new Error('Generation failed')
-      }
-
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let fullText = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        fullText += decoder.decode(value, { stream: true })
-      }
-
-      const parsed: Curriculum = JSON.parse(fullText)
-
-      const savedModules = await pollForTopicModules(topicTitle)
-      setModuleIds(savedModules.map((m) => m.id))
-
-      setCurriculum(parsed)
-    } catch (err) {
-      console.error(err)
-      setError('Something went wrong while generating your curriculum.')
-    } finally {
-      setIsGenerating(false)
+    async function handleGenerate(e: React.SubmitEvent<HTMLFormElement>) {
+        e.preventDefault()
+        setIsGenerating(true)
+        setError(null)
+        setCurriculum(null)
+        
+        try {
+          const res = await fetch('/api/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ topicTitle }),
+          })
+      
+          if (!res.ok) {
+            if (res.status === 403) {
+              const data = await res.json()
+              throw new Error(data.error)
+            }
+            throw new Error('Generation failed')
+          }
+      
+          if (!res.body) {
+            throw new Error('Generation failed')
+          }
+      
+          const reader = res.body.getReader()
+          const decoder = new TextDecoder()
+          let fullText = ''
+      
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            fullText += decoder.decode(value, { stream: true })
+          }
+      
+          const parsed: Curriculum = JSON.parse(fullText)
+      
+          const savedModules = await pollForTopicModules(topicTitle)
+          setModuleIds(savedModules.map((m) => m.id))
+      
+          setCurriculum(parsed)
+        } catch (err) {
+          console.error(err)
+          setError(err instanceof Error ? err.message : 'Something went wrong while generating your curriculum.')
+        } finally {
+          setIsGenerating(false)
+        }
     }
-  }
+
 
   async function handleFeynmanCheck(moduleIndex: number, moduleId: string) {
     const userExplanation = explanations[moduleIndex]
