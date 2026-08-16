@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { streamText, Output, createTextStreamResponse, toTextStream } from 'ai'
 import { openai } from '@ai-sdk/openai'
 import { auth } from '@clerk/nextjs/server'
@@ -25,6 +25,23 @@ export async function POST(req: NextRequest) {
 
   if (!user) {
     return new Response('User not found', { status: 404 })
+  }
+
+  // Enforce the Free plan limit: max 3 topics
+if (user.plan === 'free') {
+    const topicCount = await prisma.topic.count({
+      where: { userId: user.id },
+    })
+  
+    if (topicCount >= 3) {
+      return NextResponse.json(
+        {
+          error: 'Free plan limit reached. Upgrade to Pro for unlimited topics.',
+          code: 'PLAN_LIMIT_REACHED',
+        },
+        { status: 403 }
+      )
+    }
   }
 
   const result = streamText({
