@@ -19,21 +19,24 @@ export async function GET() {
 
   // Get every card belonging to this user, along with its most recent review
   const cards = await prisma.card.findMany({
-    where: {
-      module: {
-        topic: {
-          userId: user.id,
-        },
+  where: {
+    module: {
+      topic: {
+        userId: user.id,
       },
     },
-    include: {
-      reviews: {
-        where: { userId: user.id },
-        orderBy: { reviewedAt: 'desc' },
-        take: 1,
-      },
+  },
+  include: {
+    module: {
+      include: { topic: true },
     },
-  })
+    reviews: {
+      where: { userId: user.id },
+      orderBy: { reviewedAt: 'desc' },
+      take: 1,
+    },
+  },
+})
 
   const now = new Date()
 
@@ -44,7 +47,12 @@ export async function GET() {
   })
 
   const SESSION_LIMIT = 20
-  const sessionCards = dueCards.slice(0, SESSION_LIMIT)
+  const sessionCards = dueCards.slice(0, SESSION_LIMIT).map((card) => ({
+  id: card.id,
+  question: card.question,
+  answer: card.answer,
+  topicTitle: card.module.topic.title,
+}))
 
-  return NextResponse.json(sessionCards)
+return NextResponse.json(sessionCards)
 }
