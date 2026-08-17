@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 type Card = {
   question: string
@@ -40,100 +41,114 @@ async function pollForTopicModules(topicTitle: string, maxAttempts = 5): Promise
   return []
 }
 
+async function generateCurriculum(topicTitle: string): Promise<{ curriculum: Curriculum; moduleIds: string[] }> {
+  const res = await fetch('/api/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ topicTitle }),
+  })
+
+  if (!res.ok) {
+    if (res.status === 403) {
+      const data = await res.json()
+      throw new Error(data.error)
+    }
+    throw new Error('Generation failed')
+  }
+
+  if (!res.body) {
+    throw new Error('Generation failed')
+  }
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let fullText = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    fullText += decoder.decode(value, { stream: true })
+  }
+
+  const curriculum: Curriculum = JSON.parse(fullText)
+  const savedModules = await pollForTopicModules(topicTitle)
+
+  return { curriculum, moduleIds: savedModules.map((m) => m.id) }
+}
+
+async function submitFeynmanCheck(moduleId: string, userExplanation: string): Promise<FeynmanEvaluation> {
+  const res = await fetch('/api/feynman-check', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ moduleId, userExplanation }),
+  })
+
+  if (!res.ok || !res.body) {
+    throw new Error('Feynman check failed')
+  }
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let fullText = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    fullText += decoder.decode(value, { stream: true })
+  }
+
+  return JSON.parse(fullText)
+}
+
 export default function DashboardPage() {
   const [topicTitle, setTopicTitle] = useState('')
-  const [isGenerating, setIsGenerating] = useState(false)
   const [curriculum, setCurriculum] = useState<Curriculum | null>(null)
   const [moduleIds, setModuleIds] = useState<string[]>([])
-  const [error, setError] = useState<string | null>(null)
 
   const [explanations, setExplanations] = useState<Record<number, string>>({})
   const [evaluations, setEvaluations] = useState<Record<number, FeynmanEvaluation>>({})
   const [checkingIndex, setCheckingIndex] = useState<number | null>(null)
 
-  async function handleGenerate(e: React.SubmitEvent<HTMLFormElement>) {
+  const queryClient = useQueryClient()
+
+  const generateMutation = useMutation({
+    mutationFn: generateCurriculum,
+    onSuccess: ({ curriculum, moduleIds }) => {
+      setCurriculum(curriculum)
+      setModuleIds(moduleIds)
+      // Any component reading the ['topics'] query elsewhere will now refetch fresh data
+      queryClient.invalidateQueries({ queryKey: ['topics'] })
+    },
+  })
+
+  const feynmanMutation = useMutation({
+    mutationFn: ({ moduleId, userExplanation }: { moduleId: string; userExplanation: string }) =>
+      submitFeynmanCheck(moduleId, userExplanation),
+  })
+
+  function handleGenerate(e: React.SubmitEvent<HTMLFormElement>) {
     e.preventDefault()
-    setIsGenerating(true)
-    setError(null)
     setCurriculum(null)
-
-    try {
-      const res = await fetch('/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topicTitle }),
-      })
-
-      if (!res.ok) {
-        if (res.status === 403) {
-          const data = await res.json()
-          throw new Error(data.error)
-        }
-        throw new Error('Generation failed')
-      }
-
-      if (!res.body) {
-        throw new Error('Generation failed')
-      }
-
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let fullText = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        fullText += decoder.decode(value, { stream: true })
-      }
-
-      const parsed: Curriculum = JSON.parse(fullText)
-
-      const savedModules = await pollForTopicModules(topicTitle)
-      setModuleIds(savedModules.map((m) => m.id))
-
-      setCurriculum(parsed)
-    } catch (err) {
-      console.error(err)
-      setError(err instanceof Error ? err.message : 'Something went wrong while generating your curriculum.')
-    } finally {
-      setIsGenerating(false)
-    }
+    generateMutation.mutate(topicTitle)
   }
 
-  async function handleFeynmanCheck(moduleIndex: number, moduleId: string) {
+  function handleFeynmanCheck(moduleIndex: number, moduleId: string) {
     const userExplanation = explanations[moduleIndex]
     if (!userExplanation || userExplanation.trim().length < 20) return
 
     setCheckingIndex(moduleIndex)
 
-    try {
-      const res = await fetch('/api/feynman-check', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ moduleId, userExplanation }),
-      })
-
-      if (!res.ok || !res.body) {
-        throw new Error('Feynman check failed')
+    feynmanMutation.mutate(
+      { moduleId, userExplanation },
+      {
+        onSuccess: (evaluation) => {
+          setEvaluations((prev) => ({ ...prev, [moduleIndex]: evaluation }))
+        },
+        onSettled: () => {
+          setCheckingIndex(null)
+        },
       }
-
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let fullText = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        fullText += decoder.decode(value, { stream: true })
-      }
-
-      const parsed: FeynmanEvaluation = JSON.parse(fullText)
-      setEvaluations((prev) => ({ ...prev, [moduleIndex]: parsed }))
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setCheckingIndex(null)
-    }
+    )
   }
 
   return (
@@ -154,16 +169,18 @@ export default function DashboardPage() {
           />
           <button
             type="submit"
-            disabled={isGenerating}
+            disabled={generateMutation.isPending}
             className="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {isGenerating ? 'Generating...' : 'Generate'}
+            {generateMutation.isPending ? 'Generating...' : 'Generate'}
           </button>
         </form>
 
-        {error && (
+        {generateMutation.isError && (
           <p className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600 dark:bg-red-950/40 dark:text-red-400">
-            {error}
+            {generateMutation.error instanceof Error
+              ? generateMutation.error.message
+              : 'Something went wrong while generating your curriculum.'}
           </p>
         )}
 
