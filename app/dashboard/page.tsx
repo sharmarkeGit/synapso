@@ -243,9 +243,8 @@ export default function DashboardPage() {
     </div>
   </div>
 )}
-
         {modules.length > 0 && (
-          <div className="mt-10 space-y-6">
+          <div id="active-topic" className="mt-10 space-y-6">
             {activeTitle && (
               <h2 className="text-xl font-bold">{activeTitle}</h2>
             )}
