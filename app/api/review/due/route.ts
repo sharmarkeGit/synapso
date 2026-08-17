@@ -43,5 +43,8 @@ export async function GET() {
     return lastReview.nextReviewAt <= now
   })
 
-  return NextResponse.json(dueCards)
+  const SESSION_LIMIT = 20
+  const sessionCards = dueCards.slice(0, SESSION_LIMIT)
+
+  return NextResponse.json(sessionCards)
 }
