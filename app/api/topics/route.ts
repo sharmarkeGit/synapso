@@ -28,15 +28,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'User not found' }, { status: 404 })
   }
 
-  const topic = await prisma.topic.create({
-    data: {
-      userId: user.id,
-      title: parsed.data.title,
-      description: parsed.data.description,
+  const topics = await prisma.topic.findMany({
+    where: { userId: user.id },
+    include: {
+      modules: {
+        orderBy: { orderIndex: 'asc' },
+      },
     },
+    orderBy: { createdAt: 'desc' },
   })
 
-  return NextResponse.json(topic, { status: 201 })
+  return NextResponse.json(topics, { status: 201 })
 }
 
 export async function GET() {
@@ -59,6 +61,7 @@ export async function GET() {
   include: {
     modules: {
       orderBy: { orderIndex: 'asc' },
+      include: { cards: true },
     },
   },
   orderBy: { createdAt: 'desc' },
