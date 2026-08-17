@@ -8,16 +8,6 @@ type Card = {
   answer: string
 }
 
-type Module = {
-  title: string
-  content: string
-  cards: Card[]
-}
-
-type Curriculum = {
-  modules: Module[]
-}
-
 type FeynmanEvaluation = {
   understoodWell: string[]
   gaps: string[]
@@ -25,56 +15,31 @@ type FeynmanEvaluation = {
   masteryScore: number
 }
 
-async function pollForTopicModules(topicTitle: string, maxAttempts = 5): Promise<{ id: string }[]> {
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const res = await fetch('/api/topics')
-    const topics = await res.json()
-
-    const match = topics.find((t: { title: string; modules: { id: string }[] }) => t.title === topicTitle)
-    if (match && match.modules.length > 0) {
-      return match.modules
+type ModuleWithId = {
+    id: string
+    title: string
+    content: string
+    cards: { id: string; question: string; answer: string }[]
+  }
+  
+  async function generateCurriculum(topicTitle: string): Promise<ModuleWithId[]> {
+    const res = await fetch('/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ topicTitle }),
+    })
+  
+    if (!res.ok) {
+      if (res.status === 403) {
+        const data = await res.json()
+        throw new Error(data.error)
+      }
+      throw new Error('Generation failed')
     }
-
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+  
+    const data = await res.json()
+    return data.modules
   }
-
-  return []
-}
-
-async function generateCurriculum(topicTitle: string): Promise<{ curriculum: Curriculum; moduleIds: string[] }> {
-  const res = await fetch('/api/generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ topicTitle }),
-  })
-
-  if (!res.ok) {
-    if (res.status === 403) {
-      const data = await res.json()
-      throw new Error(data.error)
-    }
-    throw new Error('Generation failed')
-  }
-
-  if (!res.body) {
-    throw new Error('Generation failed')
-  }
-
-  const reader = res.body.getReader()
-  const decoder = new TextDecoder()
-  let fullText = ''
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    fullText += decoder.decode(value, { stream: true })
-  }
-
-  const curriculum: Curriculum = JSON.parse(fullText)
-  const savedModules = await pollForTopicModules(topicTitle)
-
-  return { curriculum, moduleIds: savedModules.map((m) => m.id) }
-}
 
 async function submitFeynmanCheck(moduleId: string, userExplanation: string): Promise<FeynmanEvaluation> {
   const res = await fetch('/api/feynman-check', {
@@ -102,23 +67,20 @@ async function submitFeynmanCheck(moduleId: string, userExplanation: string): Pr
 
 export default function DashboardPage() {
   const [topicTitle, setTopicTitle] = useState('')
-  const [curriculum, setCurriculum] = useState<Curriculum | null>(null)
-  const [moduleIds, setModuleIds] = useState<string[]>([])
 
   const [explanations, setExplanations] = useState<Record<number, string>>({})
   const [evaluations, setEvaluations] = useState<Record<number, FeynmanEvaluation>>({})
   const [checkingIndex, setCheckingIndex] = useState<number | null>(null)
+  const [modules, setModules] = useState<ModuleWithId[]>([])
 
   const queryClient = useQueryClient()
 
   const generateMutation = useMutation({
     mutationFn: generateCurriculum,
-    onSuccess: ({ curriculum, moduleIds }) => {
-      setCurriculum(curriculum)
-      setModuleIds(moduleIds)
-      // Any component reading the ['topics'] query elsewhere will now refetch fresh data
-      queryClient.invalidateQueries({ queryKey: ['topics'] })
-    },
+    onSuccess: (modules) => {
+        setModules(modules)
+        queryClient.invalidateQueries({ queryKey: ['topics'] })
+      },
   })
 
   const feynmanMutation = useMutation({
@@ -128,7 +90,7 @@ export default function DashboardPage() {
 
   function handleGenerate(e: React.SubmitEvent<HTMLFormElement>) {
     e.preventDefault()
-    setCurriculum(null)
+    setModules([])
     generateMutation.mutate(topicTitle)
   }
 
@@ -184,10 +146,10 @@ export default function DashboardPage() {
           </p>
         )}
 
-        {curriculum && (
+        {modules.length > 0 && (
           <div className="mt-10 space-y-6">
-            {curriculum.modules.map((courseModule, i) => {
-              const moduleId = moduleIds[i] ?? ''
+            {modules.map((courseModule, i) => {
+              const moduleId = courseModule.id
 
               return (
                 <div
