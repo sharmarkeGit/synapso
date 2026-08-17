@@ -72,6 +72,7 @@ export default function DashboardPage() {
   const [evaluations, setEvaluations] = useState<Record<number, FeynmanEvaluation>>({})
   const [checkingIndex, setCheckingIndex] = useState<number | null>(null)
   const [modules, setModules] = useState<ModuleWithId[]>([])
+  const [revealedCards, setRevealedCards] = useState<Set<string>>(new Set())
 
   const queryClient = useQueryClient()
 
@@ -111,6 +112,18 @@ export default function DashboardPage() {
         },
       }
     )
+  }
+
+  function toggleReveal(cardKey: string) {
+    setRevealedCards((prev) => {
+      const next = new Set(prev)
+      if (next.has(cardKey)) {
+        next.delete(cardKey)
+      } else {
+        next.add(cardKey)
+      }
+      return next
+    })
   }
 
   return (
@@ -165,12 +178,26 @@ export default function DashboardPage() {
                     Recall questions
                   </h3>
                   <ul className="mt-3 space-y-3">
-                    {courseModule.cards.map((card, j) => (
-                      <li key={j} className="text-sm">
-                        <p className="font-medium">{card.question}</p>
-                        <p className="mt-1 text-neutral-600 dark:text-neutral-400">{card.answer}</p>
-                      </li>
-                    ))}
+                    {courseModule.cards.map((card, j) => {
+                      const cardKey = `${i}-${j}`
+                      const isRevealed = revealedCards.has(cardKey)
+                    
+                      return (
+                        <li key={j} className="rounded-lg border border-neutral-200 p-4 text-sm dark:border-neutral-800">
+                          <p className="font-medium">{card.question}</p>
+                          {isRevealed ? (
+                            <p className="mt-2 text-neutral-600 dark:text-neutral-400">{card.answer}</p>
+                          ) : (
+                            <button
+                              onClick={() => toggleReveal(cardKey)}
+                              className="mt-2 text-xs font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
+                            >
+                              Show answer
+                            </button>
+                          )}
+                        </li>
+                      )
+                    })}
                   </ul>
 
                   <div className="mt-6 border-t border-neutral-200 pt-6 dark:border-neutral-800">
