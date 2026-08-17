@@ -3,11 +3,6 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
-type Card = {
-  question: string
-  answer: string
-}
-
 type FeynmanEvaluation = {
   understoodWell: string[]
   gaps: string[]
