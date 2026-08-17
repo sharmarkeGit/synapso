@@ -2,11 +2,13 @@
 
 import { useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
+import Link from 'next/link'
 
 type DueCard = {
   id: string
   question: string
   answer: string
+  topicTitle: string
 }
 
 async function fetchDueCards(): Promise<DueCard[]> {
@@ -67,6 +69,9 @@ export default function ReviewPage() {
         <p className="mt-2 text-neutral-600 dark:text-neutral-400">
           No cards are due for review right now. Come back later.
         </p>
+        <Link href="/dashboard" className="mt-4 inline-block text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400">
+            ← Back to dashboard
+        </Link>
       </div>
     )
   }
@@ -78,6 +83,9 @@ export default function ReviewPage() {
         <p className="mt-2 text-neutral-600 dark:text-neutral-400">
           You reviewed {cards.length} card{cards.length > 1 ? 's' : ''}. Nice work.
         </p>
+        <Link href="/dashboard" className="mt-4 inline-block text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400">
+        ← Back to dashboard
+      </Link>
       </div>
     )
   }
@@ -86,12 +94,24 @@ export default function ReviewPage() {
 
   return (
     <div className="mx-auto max-w-xl px-6 py-16">
-      <p className="text-sm text-neutral-500">
-        Card {currentIndex + 1} of {cards.length}
-      </p>
+  <div className="flex items-center justify-between">
+    <p className="text-sm text-neutral-500">
+      Card {currentIndex + 1} of {cards.length}
+    </p>
+    <Link
+  href="/dashboard"
+  className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 transition hover:border-red-300 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/40"
+>
+  Exit session
+</Link>
+  </div>
 
-      <div className="mt-6 rounded-xl border border-neutral-200 p-8 dark:border-neutral-800">
-        <p className="text-lg font-medium">{currentCard.question}</p>
+  <div className="mt-6 rounded-xl border border-neutral-200 p-8 dark:border-neutral-800">
+    <p className="text-sm font-semibold uppercase tracking-wide text-indigo-500">
+      {currentCard.topicTitle}
+    </p>
+    <p className="mt-1 text-lg font-medium">{currentCard.question}</p>
+        
 
         {isRevealed && (
           <p className="mt-4 border-t border-neutral-200 pt-4 text-neutral-700 dark:border-neutral-800 dark:text-neutral-300">
