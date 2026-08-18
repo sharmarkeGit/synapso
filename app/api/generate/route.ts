@@ -28,6 +28,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'User not found' }, { status: 404 })
   }
 
+  const existingTopic = await prisma.topic.findFirst({
+  where: {
+    userId: user.id,
+    title: parsed.data.topicTitle,
+  },
+  include: {
+    modules: {
+      orderBy: { orderIndex: 'asc' },
+      include: { cards: true },
+    },
+  },
+})
+
+if (existingTopic) {
+  return NextResponse.json({ modules: existingTopic.modules })
+}
+
   if (user.plan === 'free') {
     const topicCount = await prisma.topic.count({
       where: { userId: user.id },
