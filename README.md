@@ -1,17 +1,17 @@
 # Synapso
 
-An AI-powered learning platform that generates structured curricula from any topic and helps you actually retain what you learn, using retrieval practice, spaced repetition (SM-2), and the Feynman technique, grounded in cognitive science research (*Make It Stick*, Roediger & Karpicke).
+An AI-powered learning platform that generates structured curricula from any topic and helps you actually retain what you learn, using retrieval practice, spaced repetition (SM-2), and the Feynman technique, grounded in cognitive science research (_Make It Stick_, Roediger & Karpicke).
 
 **Live demo:** [synapso-gold.vercel.app](https://synapso-gold.vercel.app)
 
 ![Synapso dashboard](./docs/screenshot-dashboard.png)
-*Dashboard: generate a new topic, see due reviews across all topics*
+_Dashboard: generate a new topic, see due reviews across all topics_
 
 ![Synapso review session](./docs/screenshot-review.png)
-*Spaced repetition review: SM-2 scheduling with graded recall (Blackout to Easy)*
+_Spaced repetition review: SM-2 scheduling with graded recall (Blackout to Easy)_
 
 ![Synapso Feynman check](./docs/screenshot-feynman.png)
-*Feynman check: explain a concept in your own words, get an LLM-scored breakdown of what's right and what's missing*
+_Feynman check: explain a concept in your own words, get an LLM-scored breakdown of what's right and what's missing_
 
 ---
 
@@ -25,20 +25,20 @@ An AI-powered learning platform that generates structured curricula from any top
 
 ## Tech stack
 
-| Layer | Technology |
-|---|---|
-| Framework | Next.js 16 (App Router, Turbopack) |
-| Language | TypeScript |
-| Styling | Tailwind CSS v4 |
-| Auth | Clerk |
-| Database | PostgreSQL (Supabase) via Prisma ORM 7 |
-| AI | OpenAI API (`gpt-5-mini`) via Vercel AI SDK, structured outputs |
-| Caching | Redis (Upstash) |
-| Payments | Stripe (Checkout + webhooks) |
-| Data fetching | TanStack Query |
-| Testing | Vitest |
-| CI | GitHub Actions (lint, test, build on every push) |
-| Deployment | Vercel |
+| Layer         | Technology                                                      |
+| ------------- | --------------------------------------------------------------- |
+| Framework     | Next.js 16 (App Router, Turbopack)                              |
+| Language      | TypeScript                                                      |
+| Styling       | Tailwind CSS v4                                                 |
+| Auth          | Clerk                                                           |
+| Database      | PostgreSQL (Supabase) via Prisma ORM 7                          |
+| AI            | OpenAI API (`gpt-5-mini`) via Vercel AI SDK, structured outputs |
+| Caching       | Redis (Upstash)                                                 |
+| Payments      | Stripe (Checkout + webhooks)                                    |
+| Data fetching | TanStack Query                                                  |
+| Testing       | Vitest                                                          |
+| CI            | GitHub Actions (lint, test, build on every push)                |
+| Deployment    | Vercel                                                          |
 
 ## Architecture highlights
 
@@ -50,7 +50,7 @@ An AI-powered learning platform that generates structured curricula from any top
 
 ## Notable trade-offs and decisions
 
-- **No cross-user topic deduplication.** The Redis cache speeds up repeated *generation*, but every user who requests "Photosynthesis" still gets their own `Topic`/`Module`/`Card` rows. Deduplicating shared content across users was judged out of scope for the MVP.
+- **No cross-user topic deduplication.** The Redis cache speeds up repeated _generation_, but every user who requests "Photosynthesis" still gets their own `Topic`/`Module`/`Card` rows. Deduplicating shared content across users was judged out of scope for the MVP.
 - **LLM non-determinism is accepted, not fought.** Identical Feynman explanations can score a few points differently across runs. Acceptable here since scores drive coarse spaced-repetition scheduling, not precise grading; a fair trade for not adding `temperature: 0` fragility.
 - **Interleaved review by default, with an opt-out.** Review sessions mix topics and item types (cards + Feynman checks) by default, reflecting the literature on interleaving. Each topic also has its own scoped "Review" entry point for users who want blocked practice.
 - **Application-level cascade delete, not database-level.** `onDelete: Cascade` isn't set in the schema; deleting a topic instead runs a Prisma transaction that removes Reviews, FeynmanChecks, Cards, and Modules in dependency order before deleting the Topic itself. That trade favors explicit, auditable deletes over an automatic DB-level cascade, at the cost of a single spot in the codebase that needs updating if a new child model is added under Module later.
@@ -73,7 +73,7 @@ Refactoring `/api/generate` and the dashboard to remove client-side polling left
 
 ### Stale dashboard data across users on sign-out
 
-Signing out left the *previous* user's dashboard data briefly visible to whoever signed in next, on the same browser. Cause: a shared, browser-wide TanStack Query `QueryClient` singleton wasn't being cleared on auth state change. Fixed with a small client component that calls `queryClient.clear()` whenever Clerk's `isSignedIn` flips to `false`.
+Signing out left the _previous_ user's dashboard data briefly visible to whoever signed in next, on the same browser. Cause: a shared, browser-wide TanStack Query `QueryClient` singleton wasn't being cleared on auth state change. Fixed with a small client component that calls `queryClient.clear()` whenever Clerk's `isSignedIn` flips to `false`.
 
 ## Local development
 
