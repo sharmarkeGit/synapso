@@ -89,6 +89,9 @@ model FeynmanCheck {
   gaps            String[]
   clarification   String   @db.Text
   masteryScore    Int
+  easeFactor      Float    @default(2.5)
+  intervalDays    Int      @default(0)
+  nextReviewAt    DateTime @default(now())
   createdAt       DateTime @default(now())
   module          Module   @relation(fields: [moduleId], references: [id])
   user            User     @relation(fields: [userId], references: [id])
