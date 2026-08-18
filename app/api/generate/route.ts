@@ -1,54 +1,55 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { generateText, Output } from 'ai'
-import { openai } from '@ai-sdk/openai'
-import { auth } from '@clerk/nextjs/server'
-import { prisma } from '@/lib/prisma'
-import { curriculumSchema, generateCurriculumSchema } from '@/lib/validations'
-import { redis } from '@/lib/redis'
+import { openai } from '@ai-sdk/openai';
+import { auth } from '@clerk/nextjs/server';
+import { generateText, Output } from 'ai';
+import { NextRequest, NextResponse } from 'next/server';
+
+import { prisma } from '@/lib/prisma';
+import { redis } from '@/lib/redis';
+import { curriculumSchema, generateCurriculumSchema } from '@/lib/validations';
 
 export async function POST(req: NextRequest) {
-  const { isAuthenticated, userId: clerkId } = await auth()
+  const { isAuthenticated, userId: clerkId } = await auth();
 
   if (!isAuthenticated) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const body = await req.json()
-  const parsed = generateCurriculumSchema.safeParse(body)
+  const body = await req.json();
+  const parsed = generateCurriculumSchema.safeParse(body);
 
   if (!parsed.success) {
-    return NextResponse.json({ error: 'Invalid input' }, { status: 400 })
+    return NextResponse.json({ error: 'Invalid input' }, { status: 400 });
   }
 
   const user = await prisma.user.findUnique({
     where: { clerkId: clerkId! },
-  })
+  });
 
   if (!user) {
-    return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    return NextResponse.json({ error: 'User not found' }, { status: 404 });
   }
 
   const existingTopic = await prisma.topic.findFirst({
-  where: {
-    userId: user.id,
-    title: parsed.data.topicTitle,
-  },
-  include: {
-    modules: {
-      orderBy: { orderIndex: 'asc' },
-      include: { cards: true },
+    where: {
+      userId: user.id,
+      title: parsed.data.topicTitle,
     },
-  },
-})
+    include: {
+      modules: {
+        orderBy: { orderIndex: 'asc' },
+        include: { cards: true },
+      },
+    },
+  });
 
-if (existingTopic) {
-  return NextResponse.json({ modules: existingTopic.modules })
-}
+  if (existingTopic) {
+    return NextResponse.json({ modules: existingTopic.modules });
+  }
 
   if (user.plan === 'free') {
     const topicCount = await prisma.topic.count({
       where: { userId: user.id },
-    })
+    });
 
     if (topicCount >= 3) {
       return NextResponse.json(
@@ -56,16 +57,16 @@ if (existingTopic) {
           error: 'Free plan limit reached. Upgrade to Pro for unlimited topics.',
           code: 'PLAN_LIMIT_REACHED',
         },
-        { status: 403 }
-      )
+        { status: 403 },
+      );
     }
   }
 
-  const cacheKey = `curriculum:${parsed.data.topicTitle.trim().toLowerCase()}`
+  const cacheKey = `curriculum:${parsed.data.topicTitle.trim().toLowerCase()}`;
 
   const cached = await redis.get<{
-    modules: { title: string; content: string; cards: { question: string; answer: string }[] }[]
-  }>(cacheKey)
+    modules: { title: string; content: string; cards: { question: string; answer: string }[] }[];
+  }>(cacheKey);
 
   const curriculum =
     cached ??
@@ -84,11 +85,11 @@ Generate 3 to 5 modules that build on each other logically. Each module must inc
 
 Avoid trivial yes/no questions. Favor "why" and "how" questions that force genuine recall.`,
       })
-    ).output
+    ).output;
 
   // Cache miss only: store this fresh generation for future requests
   if (!cached) {
-    await redis.set(cacheKey, curriculum, { ex: 60 * 60 * 24 * 7 })
+    await redis.set(cacheKey, curriculum, { ex: 60 * 60 * 24 * 7 });
   }
 
   // Persist this user's own Topic and get back the real DB IDs
@@ -117,7 +118,7 @@ Avoid trivial yes/no questions. Favor "why" and "how" questions that force genui
         include: { cards: true },
       },
     },
-  })
+  });
 
-  return NextResponse.json({ modules: topic.modules })
+  return NextResponse.json({ modules: topic.modules });
 }

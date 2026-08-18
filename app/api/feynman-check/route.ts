@@ -1,39 +1,40 @@
-import { NextRequest } from 'next/server'
-import { streamText, Output, createTextStreamResponse, toTextStream } from 'ai'
-import { openai } from '@ai-sdk/openai'
-import { auth } from '@clerk/nextjs/server'
-import { prisma } from '@/lib/prisma'
-import { feynmanCheckSchema, feynmanEvaluationSchema } from '@/lib/validations'
-import { calculateSM2 } from '@/lib/sm2'
+import { openai } from '@ai-sdk/openai';
+import { auth } from '@clerk/nextjs/server';
+import { createTextStreamResponse, Output, streamText, toTextStream } from 'ai';
+import { NextRequest } from 'next/server';
+
+import { prisma } from '@/lib/prisma';
+import { calculateSM2 } from '@/lib/sm2';
+import { feynmanCheckSchema, feynmanEvaluationSchema } from '@/lib/validations';
 
 export async function POST(req: NextRequest) {
-  const { isAuthenticated, userId: clerkId } = await auth()
+  const { isAuthenticated, userId: clerkId } = await auth();
 
   if (!isAuthenticated) {
-    return new Response('Unauthorized', { status: 401 })
+    return new Response('Unauthorized', { status: 401 });
   }
 
-  const body = await req.json()
-  const parsed = feynmanCheckSchema.safeParse(body)
+  const body = await req.json();
+  const parsed = feynmanCheckSchema.safeParse(body);
 
   if (!parsed.success) {
-    return new Response('Invalid input', { status: 400 })
+    return new Response('Invalid input', { status: 400 });
   }
 
   const user = await prisma.user.findUnique({
     where: { clerkId: clerkId! },
-  })
+  });
 
   if (!user) {
-    return new Response('User not found', { status: 404 })
+    return new Response('User not found', { status: 404 });
   }
 
   const courseModule = await prisma.module.findUnique({
     where: { id: parsed.data.moduleId },
-  })
+  });
 
   if (!courseModule) {
-    return new Response('Module not found', { status: 404 })
+    return new Response('Module not found', { status: 404 });
   }
 
   const result = streamText({
@@ -60,22 +61,22 @@ Evaluate the student's explanation:
 - Assign a masteryScore from 0 to 100 reflecting how complete and accurate their understanding is
 
 Be encouraging but honest. Do not inflate the score if there are real gaps.`,
-  })
+  });
 
   void Promise.resolve(result.output)
     .then(async (evaluation) => {
       const previousCheck = await prisma.feynmanCheck.findFirst({
         where: { moduleId: parsed.data.moduleId, userId: user.id },
         orderBy: { createdAt: 'desc' },
-      })
+      });
 
-      const quality = Math.round(evaluation.masteryScore / 20)
+      const quality = Math.round(evaluation.masteryScore / 20);
 
       const { easeFactor, intervalDays, nextReviewAt } = calculateSM2({
         quality,
         previousEaseFactor: previousCheck?.easeFactor ?? 2.5,
         previousIntervalDays: previousCheck?.intervalDays ?? 0,
-      })
+      });
 
       await prisma.feynmanCheck.create({
         data: {
@@ -90,13 +91,13 @@ Be encouraging but honest. Do not inflate the score if there are real gaps.`,
           intervalDays,
           nextReviewAt,
         },
-      })
+      });
     })
     .catch((err) => {
-      console.error('Failed to save Feynman check:', err)
-    })
+      console.error('Failed to save Feynman check:', err);
+    });
 
   return createTextStreamResponse({
     stream: toTextStream({ stream: result.stream }),
-  })
+  });
 }
