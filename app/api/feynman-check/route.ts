@@ -4,6 +4,7 @@ import { openai } from '@ai-sdk/openai'
 import { auth } from '@clerk/nextjs/server'
 import { prisma } from '@/lib/prisma'
 import { feynmanCheckSchema, feynmanEvaluationSchema } from '@/lib/validations'
+import { calculateSM2 } from '@/lib/sm2'
 
 export async function POST(req: NextRequest) {
   const { isAuthenticated, userId: clerkId } = await auth()
@@ -61,9 +62,21 @@ Evaluate the student's explanation:
 Be encouraging but honest. Do not inflate the score if there are real gaps.`,
   })
 
-  // Fire-and-forget: persist the check once the full evaluation is ready
   void Promise.resolve(result.output)
     .then(async (evaluation) => {
+      const previousCheck = await prisma.feynmanCheck.findFirst({
+        where: { moduleId: parsed.data.moduleId, userId: user.id },
+        orderBy: { createdAt: 'desc' },
+      })
+
+      const quality = Math.round(evaluation.masteryScore / 20)
+
+      const { easeFactor, intervalDays, nextReviewAt } = calculateSM2({
+        quality,
+        previousEaseFactor: previousCheck?.easeFactor ?? 2.5,
+        previousIntervalDays: previousCheck?.intervalDays ?? 0,
+      })
+
       await prisma.feynmanCheck.create({
         data: {
           moduleId: parsed.data.moduleId,
@@ -73,6 +86,9 @@ Be encouraging but honest. Do not inflate the score if there are real gaps.`,
           gaps: evaluation.gaps,
           clarification: evaluation.clarification,
           masteryScore: Math.round(evaluation.masteryScore),
+          easeFactor,
+          intervalDays,
+          nextReviewAt,
         },
       })
     })
