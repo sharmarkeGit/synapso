@@ -28,7 +28,9 @@ async function generateCurriculum(topicTitle: string): Promise<ModuleWithId[]> {
   if (!res.ok) {
     if (res.status === 403) {
       const data = await res.json();
-      throw new Error(data.error);
+      const error = new Error(data.error) as Error & { code?: string };
+      error.code = data.code;
+      throw error;
     }
     throw new Error('Generation failed');
   }
@@ -37,7 +39,7 @@ async function generateCurriculum(topicTitle: string): Promise<ModuleWithId[]> {
   return data.modules;
 }
 
-async function fetchTopics(): Promise<Topic[]> {
+async function fetchTopics(): Promise<{ plan: string; topics: Topic[] }> {
   const res = await fetch('/api/topics');
   if (!res.ok) throw new Error('Failed to fetch topics');
   return res.json();
@@ -58,10 +60,13 @@ export default function DashboardPage() {
 
   const queryClient = useQueryClient();
 
-  const { data: topics } = useQuery({
+  const { data: topicData } = useQuery({
     queryKey: ['topics'],
     queryFn: fetchTopics,
   });
+
+  const topics = topicData?.topics;
+  const userPlan = topicData?.plan;
 
   const { data: dueItems } = useQuery({
     queryKey: ['review', 'due', 'count'],
@@ -108,6 +113,19 @@ export default function DashboardPage() {
     }, 0);
   }
 
+  async function startCheckout(): Promise<{ url: string }> {
+    const res = await fetch('/api/checkout', { method: 'POST' });
+    if (!res.ok) throw new Error('Failed to start checkout');
+    return res.json();
+  }
+
+  const upgradeMutation = useMutation({
+    mutationFn: startCheckout,
+    onSuccess: (data) => {
+      window.open(data.url, '_blank');
+    },
+  });
+
   return (
     <div className="min-h-screen bg-white text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
       <div className="mx-auto max-w-2xl px-6 py-16">
@@ -116,7 +134,15 @@ export default function DashboardPage() {
           Enter a topic and get a curriculum built on retrieval practice, spaced repetition, and
           interleaving.
         </p>
-
+        {userPlan === 'free' && (
+          <button
+            onClick={() => upgradeMutation.mutate()}
+            disabled={upgradeMutation.isPending}
+            className="mt-4 text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {upgradeMutation.isPending ? 'Redirecting...' : 'Upgrade to Pro →'}
+          </button>
+        )}
         {dueCount !== undefined && dueCount > 0 && (
           <Link
             href="/review"
@@ -147,11 +173,23 @@ export default function DashboardPage() {
         </form>
 
         {generateMutation.isError && (
-          <p className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600 dark:bg-red-950/40 dark:text-red-400">
-            {generateMutation.error instanceof Error
-              ? generateMutation.error.message
-              : 'Something went wrong while generating your curriculum.'}
-          </p>
+          <div className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600 dark:bg-red-950/40 dark:text-red-400">
+            <p>
+              {generateMutation.error instanceof Error
+                ? generateMutation.error.message
+                : 'Something went wrong while generating your curriculum.'}
+            </p>
+            {(generateMutation.error as Error & { code?: string })?.code ===
+              'PLAN_LIMIT_REACHED' && (
+              <button
+                onClick={() => upgradeMutation.mutate()}
+                disabled={upgradeMutation.isPending}
+                className="mt-2 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {upgradeMutation.isPending ? 'Redirecting...' : 'Upgrade to Pro'}
+              </button>
+            )}
+          </div>
         )}
 
         {topics && topics.length > 0 && (

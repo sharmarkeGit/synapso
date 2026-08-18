@@ -65,5 +65,8 @@ export async function GET() {
     orderBy: { createdAt: 'desc' },
   });
 
-  return NextResponse.json(topics);
+  return NextResponse.json({
+    plan: user.plan,
+    topics,
+  });
 }
