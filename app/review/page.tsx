@@ -3,7 +3,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 type CardItem = {
   type: 'card';
@@ -29,6 +29,30 @@ type FeynmanEvaluation = {
   clarification: string;
   masteryScore: number;
 };
+
+function Spinner({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg
+      className={`animate-spin ${className}`}
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+    >
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path
+        className="opacity-75"
+        fill="currentColor"
+        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+      />
+    </svg>
+  );
+}
+
+const FEYNMAN_MESSAGES = [
+  'Reading your explanation...',
+  'Checking key concepts...',
+  'Scoring mastery...',
+];
 
 async function submitReview(cardId: string, quality: number) {
   const res = await fetch('/api/review', {
@@ -81,9 +105,11 @@ export default function ReviewPage() {
   const [isRevealed, setIsRevealed] = useState(false);
   const [explanation, setExplanation] = useState('');
   const [feynmanResult, setFeynmanResult] = useState<FeynmanEvaluation | null>(null);
+  const [feynMsgIndex, setFeynMsgIndex] = useState(0);
 
   const searchParams = useSearchParams();
   const topicId = searchParams.get('topicId');
+  const topicTitleParam = searchParams.get('title');
 
   async function fetchDueItems(): Promise<ReviewItem[]> {
     const url = topicId ? `/api/review/due?topicId=${topicId}` : '/api/review/due';
@@ -111,10 +137,25 @@ export default function ReviewPage() {
   const feynmanMutation = useMutation({
     mutationFn: ({ moduleId, userExplanation }: { moduleId: string; userExplanation: string }) =>
       submitFeynmanCheck(moduleId, userExplanation),
+    onMutate: () => {
+      setFeynMsgIndex(0);
+    },
     onSuccess: (evaluation) => {
       setFeynmanResult(evaluation);
     },
   });
+
+  // Cycle reassuring status messages while the Feynman evaluation is in
+  // flight, since the LLM call can take a while and a static "Evaluating..."
+  // label is easy to miss or mistake for a stall. The index resets in
+  // onMutate above, not here; this effect only subscribes to the interval.
+  useEffect(() => {
+    if (!feynmanMutation.isPending) return;
+    const interval = setInterval(() => {
+      setFeynMsgIndex((i) => (i + 1) % FEYNMAN_MESSAGES.length);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [feynmanMutation.isPending]);
 
   function goToNext() {
     setFeynmanResult(null);
@@ -169,7 +210,11 @@ export default function ReviewPage() {
 
   return (
     <div className="mx-auto max-w-xl px-6 py-16">
-      <div className="flex items-center justify-between">
+      <h1 className="text-2xl font-bold">
+        {topicTitleParam ? `Reviewing: ${topicTitleParam}` : 'Review session'}
+      </h1>
+
+      <div className="mt-4 flex items-center justify-between">
         <p className="text-sm text-neutral-500">
           Card {currentIndex + 1} of {items.length}
         </p>
@@ -246,10 +291,14 @@ export default function ReviewPage() {
                     })
                   }
                   disabled={feynmanMutation.isPending || explanation.trim().length < 20}
-                  className="mt-3 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="mt-3 flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
                 >
+                  {feynmanMutation.isPending && <Spinner />}
                   {feynmanMutation.isPending ? 'Evaluating...' : 'Submit'}
                 </button>
+                {feynmanMutation.isPending && (
+                  <p className="mt-2 text-xs text-neutral-500">{FEYNMAN_MESSAGES[feynMsgIndex]}</p>
+                )}
               </>
             ) : (
               <div className="mt-4">
