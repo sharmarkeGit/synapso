@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 type ModuleWithId = {
   id: string;
@@ -17,6 +17,99 @@ type Topic = {
   createdAt: string;
   modules: ModuleWithId[];
 };
+
+function Spinner({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg
+      className={`animate-spin ${className}`}
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+    >
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path
+        className="opacity-75"
+        fill="currentColor"
+        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+      />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      className="h-4 w-4"
+    >
+      <path
+        fillRule="evenodd"
+        d="M8.75 1A1.75 1.75 0 007 2.75V3H3.75a.75.75 0 000 1.5h.5l.62 10.13A2.75 2.75 0 007.61 17h4.78a2.75 2.75 0 002.74-2.37L15.75 4.5h.5a.75.75 0 000-1.5H13v-.25A1.75 1.75 0 0011.25 1h-2.5zM11 3H9v-.25a.25.25 0 01.25-.25h1.5a.25.25 0 01.25.25V3zM6.75 6.5a.75.75 0 01.75.75v5.5a.75.75 0 01-1.5 0v-5.5a.75.75 0 01.75-.75zm3 0a.75.75 0 01.75.75v5.5a.75.75 0 01-1.5 0v-5.5a.75.75 0 01.75-.75zm3 0a.75.75 0 01.75.75v5.5a.75.75 0 01-1.5 0v-5.5a.75.75 0 01.75-.75z"
+        clipRule="evenodd"
+      />
+    </svg>
+  );
+}
+
+function ConfirmDeleteDialog({
+  topic,
+  isPending,
+  onCancel,
+  onConfirm,
+}: {
+  topic: Topic;
+  isPending: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+      onClick={onCancel}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-delete-title"
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-sm rounded-xl border border-neutral-800 bg-neutral-900 p-6 shadow-xl"
+      >
+        <h2 id="confirm-delete-title" className="text-base font-semibold text-neutral-100">
+          Delete &quot;{topic.title}&quot;?
+        </h2>
+        <p className="mt-2 text-sm text-neutral-400">
+          This removes all its modules and cards. This can&apos;t be undone.
+        </p>
+        <div className="mt-6 flex justify-end gap-3">
+          <button
+            onClick={onCancel}
+            disabled={isPending}
+            className="rounded-lg px-4 py-2 text-sm font-medium text-neutral-300 transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={isPending}
+            className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isPending && <Spinner className="h-4 w-4" />}
+            {isPending ? 'Deleting...' : 'Delete'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const GENERATION_MESSAGES = [
+  'Structuring your curriculum...',
+  'Writing modules...',
+  'Building recall questions...',
+  'Almost there...',
+];
 
 async function generateCurriculum(topicTitle: string): Promise<ModuleWithId[]> {
   const res = await fetch('/api/generate', {
@@ -51,12 +144,18 @@ async function fetchDueItems(): Promise<{ type: string; topicTitle: string }[]> 
   return res.json();
 }
 
+async function deleteTopicRequest(topicId: string): Promise<void> {
+  const res = await fetch(`/api/topics/${topicId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete topic');
+}
+
 export default function DashboardPage() {
   const [topicTitle, setTopicTitle] = useState('');
   const [modules, setModules] = useState<ModuleWithId[]>([]);
   const [activeTitle, setActiveTitle] = useState<string | null>(null);
-
   const [activeTopicId, setActiveTopicId] = useState<string | null>(null);
+  const [genMsgIndex, setGenMsgIndex] = useState(0);
+  const [confirmTopic, setConfirmTopic] = useState<Topic | null>(null);
 
   const queryClient = useQueryClient();
 
@@ -81,6 +180,9 @@ export default function DashboardPage() {
 
   const generateMutation = useMutation({
     mutationFn: generateCurriculum,
+    onMutate: () => {
+      setGenMsgIndex(0);
+    },
     onSuccess: (newModules) => {
       setModules(newModules);
       setActiveTitle(topicTitle);
@@ -94,6 +196,41 @@ export default function DashboardPage() {
       }, 100);
     },
   });
+
+  // Cycle reassuring status messages while a curriculum is generating, since a
+  // cache-miss LLM call can take 30-40s and a static label reads as frozen.
+  // The index resets in onMutate above (the action that starts the wait),
+  // not here — this effect only subscribes to the interval while pending.
+  useEffect(() => {
+    if (!generateMutation.isPending) return;
+    const interval = setInterval(() => {
+      setGenMsgIndex((i) => (i + 1) % GENERATION_MESSAGES.length);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [generateMutation.isPending]);
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteTopicRequest,
+    onSuccess: (_data, deletedTopicId) => {
+      if (activeTopicId === deletedTopicId) {
+        setModules([]);
+        setActiveTitle(null);
+        setActiveTopicId(null);
+      }
+      queryClient.invalidateQueries({ queryKey: ['topics'] });
+      queryClient.invalidateQueries({ queryKey: ['review', 'due', 'count'] });
+    },
+  });
+
+  function handleDelete(topic: Topic) {
+    setConfirmTopic(topic);
+  }
+
+  function confirmDelete() {
+    if (!confirmTopic) return;
+    deleteMutation.mutate(confirmTopic.id);
+    setConfirmTopic(null);
+  }
 
   function handleGenerate(e: React.SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -166,8 +303,9 @@ export default function DashboardPage() {
           <button
             type="submit"
             disabled={generateMutation.isPending}
-            className="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
+            {generateMutation.isPending && <Spinner />}
             {generateMutation.isPending ? 'Generating...' : 'Generate'}
           </button>
         </form>
@@ -201,6 +339,8 @@ export default function DashboardPage() {
               <ul className="max-h-80 space-y-2 overflow-y-auto pr-1">
                 {topics.map((topic) => {
                   const topicDueCount = dueCountForTopic(topic.title);
+                  const isDeleting =
+                    deleteMutation.isPending && deleteMutation.variables === topic.id;
 
                   return (
                     <li
@@ -223,7 +363,7 @@ export default function DashboardPage() {
                       </button>
                       {topicDueCount > 0 ? (
                         <Link
-                          href={`/review?topicId=${topic.id}`}
+                          href={`/review?topicId=${topic.id}&title=${encodeURIComponent(topic.title)}`}
                           className="ml-3 rounded-md bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 transition hover:bg-indigo-100 dark:bg-indigo-950/40 dark:text-indigo-300"
                         >
                           Review
@@ -233,6 +373,15 @@ export default function DashboardPage() {
                           Review
                         </span>
                       )}
+                      <button
+                        onClick={() => handleDelete(topic)}
+                        disabled={isDeleting}
+                        aria-label={`Delete ${topic.title}`}
+                        title={`Delete ${topic.title}`}
+                        className="ml-2 rounded-md p-1.5 text-neutral-400 transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-red-950/40"
+                      >
+                        {isDeleting ? <Spinner className="h-4 w-4" /> : <TrashIcon />}
+                      </button>
                     </li>
                   );
                 })}
@@ -244,8 +393,9 @@ export default function DashboardPage() {
           </div>
         )}
         {generateMutation.isPending && (
-          <div className="mt-10 text-center text-sm text-neutral-500">
-            Generating your curriculum...
+          <div className="mt-10 flex flex-col items-center gap-2 text-center text-sm text-neutral-500">
+            <Spinner className="h-5 w-5" />
+            <span>{GENERATION_MESSAGES[genMsgIndex]}</span>
           </div>
         )}
 
@@ -266,6 +416,15 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+
+      {confirmTopic && (
+        <ConfirmDeleteDialog
+          topic={confirmTopic}
+          isPending={deleteMutation.isPending && deleteMutation.variables === confirmTopic.id}
+          onCancel={() => setConfirmTopic(null)}
+          onConfirm={confirmDelete}
+        />
+      )}
     </div>
   );
 }

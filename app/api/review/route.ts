@@ -1,5 +1,6 @@
 import { auth } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
+import z from 'zod';
 
 import { prisma } from '@/lib/prisma';
 import { calculateSM2 } from '@/lib/sm2';
@@ -16,7 +17,7 @@ export async function POST(req: NextRequest) {
   const parsed = submitReviewSchema.safeParse(body);
 
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return NextResponse.json({ error: z.flattenError(parsed.error) }, { status: 400 });
   }
 
   const user = await prisma.user.findUnique({
