@@ -53,6 +53,7 @@ An AI-powered learning platform that generates structured curricula from any top
 - **No cross-user topic deduplication.** The Redis cache speeds up repeated *generation*, but every user who requests "Photosynthesis" still gets their own `Topic`/`Module`/`Card` rows. Deduplicating shared content across users was judged out of scope for the MVP.
 - **LLM non-determinism is accepted, not fought.** Identical Feynman explanations can score a few points differently across runs. Acceptable here since scores drive coarse spaced-repetition scheduling, not precise grading; a fair trade for not adding `temperature: 0` fragility.
 - **Interleaved review by default, with an opt-out.** Review sessions mix topics and item types (cards + Feynman checks) by default, reflecting the literature on interleaving. Each topic also has its own scoped "Review" entry point for users who want blocked practice.
+- **Application-level cascade delete, not database-level.** `onDelete: Cascade` isn't set in the schema; deleting a topic instead runs a Prisma transaction that removes Reviews, FeynmanChecks, Cards, and Modules in dependency order before deleting the Topic itself. That trade favors explicit, auditable deletes over an automatic DB-level cascade, at the cost of a single spot in the codebase that needs updating if a new child model is added under Module later.
 
 ## Engineering notes
 
