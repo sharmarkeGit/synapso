@@ -119,13 +119,10 @@ async function generateCurriculum(topicTitle: string): Promise<ModuleWithId[]> {
   });
 
   if (!res.ok) {
-    if (res.status === 403) {
-      const data = await res.json();
-      const error = new Error(data.error) as Error & { code?: string };
-      error.code = data.code;
-      throw error;
-    }
-    throw new Error('Generation failed');
+    const data = await res.json().catch(() => null);
+    const error = new Error(data?.error ?? 'Generation failed') as Error & { code?: string };
+    error.code = data?.code;
+    throw error;
   }
 
   const data = await res.json();
@@ -263,6 +260,10 @@ export default function DashboardPage() {
     },
   });
 
+  const generateError = generateMutation.error as (Error & { code?: string }) | null;
+  const isInvalidTopicError = generateError?.code === 'INVALID_TOPIC';
+  const isPlanLimitError = generateError?.code === 'PLAN_LIMIT_REACHED';
+
   return (
     <div className="min-h-screen bg-white text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
       <div className="mx-auto max-w-2xl px-6 py-16">
@@ -311,14 +312,20 @@ export default function DashboardPage() {
         </form>
 
         {generateMutation.isError && (
-          <div className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600 dark:bg-red-950/40 dark:text-red-400">
+          <div
+            className={`mt-4 rounded-lg px-4 py-3 text-sm ${
+              isInvalidTopicError
+                ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400'
+                : 'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400'
+            }`}
+          >
             <p>
-              {generateMutation.error instanceof Error
-                ? generateMutation.error.message
-                : 'Something went wrong while generating your curriculum.'}
+              {generateError?.message ?? 'Something went wrong while generating your curriculum.'}
             </p>
-            {(generateMutation.error as Error & { code?: string })?.code ===
-              'PLAN_LIMIT_REACHED' && (
+            {isInvalidTopicError && (
+              <p className="mt-1 text-xs opacity-80">Try a clearer, more specific topic.</p>
+            )}
+            {isPlanLimitError && (
               <button
                 onClick={() => upgradeMutation.mutate()}
                 disabled={upgradeMutation.isPending}
